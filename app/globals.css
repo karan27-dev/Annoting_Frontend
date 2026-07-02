@@ -1,0 +1,137 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────────────────────────────────────────────────────────
+   Annoting design system — warm minimal, supermemory aesthetic.
+   Cream canvas · ink text · single confident accent · Geist type.
+   Retune the brand by editing these variables only.
+   ───────────────────────────────────────────────────────────── */
+:root {
+  --canvas: #f6f4ef; /* warm off-white page background */
+  --surface: #fbfaf7; /* cards on canvas */
+  --elevated: #ffffff; /* popovers, raised cards */
+  --ink: #1c1917; /* near-black warm text */
+  --muted: #5c5750; /* secondary text */
+  --faint: #8b857c; /* tertiary / captions */
+  --line: #e7e2d9; /* hairline borders */
+
+  --accent: #e2553d; /* warm terracotta — the one accent */
+  --accent-soft: #fbe8e2;
+  --accent-ink: #b23a25;
+
+  --success: #2f8f5b;
+  --warning: #c98a17;
+  --danger: #cf4444;
+}
+
+* {
+  border-color: var(--line);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--canvas);
+  color: var(--ink);
+  font-feature-settings: "ss01", "cv01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Typographic rhythm */
+.display {
+  letter-spacing: -0.025em;
+  line-height: 1.02;
+}
+.balance {
+  text-wrap: balance;
+}
+
+/* Subtle dotted grid texture for hero / empty states */
+.grid-texture {
+  background-image: radial-gradient(var(--line) 1px, transparent 1px);
+  background-size: 22px 22px;
+  background-position: -1px -1px;
+}
+
+/* Focus ring used across interactive elements */
+.focus-ring:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--canvas), 0 0 0 4px var(--accent);
+}
+
+/* Infinite marquee (labeled sample strip) */
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.animate-marquee {
+  animation: marquee 40s linear infinite;
+}
+.marquee-mask {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 8%,
+    black 92%,
+    transparent
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 8%,
+    black 92%,
+    transparent
+  );
+}
+
+/* Skeleton shimmer */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--line);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.6),
+    transparent
+  );
+  animation: shimmer 1.6s infinite;
+}
+
+/* Thin, tasteful scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 999px;
+  border: 3px solid var(--canvas);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--faint);
+}
