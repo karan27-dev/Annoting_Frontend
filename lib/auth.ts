@@ -50,6 +50,16 @@ export async function register(payload: {
   });
 }
 
+// Exchanges a Google ID token for our session and returns the signed-in user.
+export async function googleAuth(credential: string): Promise<User> {
+  const res = await api<TokenResponse>("/auth/google", {
+    method: "POST",
+    body: JSON.stringify({ credential }),
+  });
+  setToken(res.access_token);
+  return me();
+}
+
 export async function me(): Promise<User> {
   return api<User>("/auth/me");
 }

@@ -78,8 +78,8 @@ export function MiniBars({ data, className }: { data: number[]; className?: stri
       {data.map((d, i) => (
         <div
           key={i}
-          className="flex-1 rounded-sm bg-accent/70 transition-all"
-          style={{ height: `${(d / max) * 100}%` }}
+          className="flex-1 rounded-sm bg-accent transition-all"
+          style={{ height: `${(d / max) * 100}%`, minHeight: d > 0 ? "3px" : "0" }}
         />
       ))}
     </div>

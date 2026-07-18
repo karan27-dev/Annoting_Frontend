@@ -170,11 +170,23 @@ export default function ProjectDetailPage() {
 
             <Card className="p-6">
               <p className="text-sm font-medium">Velocity — labels / day</p>
-              <MiniBars
-                className="mt-4 h-20"
-                data={[120, 240, 180, 320, 280, 410, 360]}
-              />
-              <p className="mt-3 text-xs text-faint">Last 7 days</p>
+              {quality && quality.velocity.some((v) => v.labels > 0) ? (
+                <>
+                  <MiniBars
+                    className="mt-4 h-20"
+                    data={quality.velocity.map((v) => v.labels)}
+                  />
+                  <div className="mt-2 flex justify-between text-xs text-faint">
+                    {quality.velocity.map((v, i) => (
+                      <span key={i}>{v.day}</span>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <p className="mt-4 text-sm text-faint">
+                  No labels submitted yet — this fills in live as annotators work.
+                </p>
+              )}
             </Card>
           </div>
         )}
@@ -183,33 +195,71 @@ export default function ProjectDetailPage() {
           <div className="space-y-6">
             <Card className="p-6">
               <p className="text-sm text-muted">Aggregate quality</p>
-              <p className="display mt-2 text-4xl font-semibold">
-                IoU {(project.quality_score ?? 0).toFixed(2)}
-              </p>
-              <p className="mt-1 text-sm text-faint">
-                Target {project.quality_target.toFixed(2)} · spot-checked on 5% of
-                jobs
-              </p>
+              {quality?.aggregate_iou != null ? (
+                <>
+                  <p className="display mt-2 text-4xl font-semibold">
+                    IoU {quality.aggregate_iou.toFixed(2)}
+                  </p>
+                  <p className="mt-1 text-sm text-faint">
+                    Target {(quality?.quality_target ?? 0.85).toFixed(2)} ·{" "}
+                    {quality.reviewed_jobs} of {quality.total_jobs} jobs approved
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="display mt-2 text-4xl font-semibold text-faint">
+                    —
+                  </p>
+                  <p className="mt-1 text-sm text-faint">
+                    Quality scores appear once reviewers start approving jobs
+                    (target IoU {(project.quality_target ?? 0.85).toFixed(2)}).
+                  </p>
+                </>
+              )}
             </Card>
             <Card className="p-6">
-              <p className="mb-4 text-sm font-medium">Per-class accuracy</p>
-              <div className="space-y-3">
-                {[
-                  ["car", 0.94],
-                  ["truck", 0.89],
-                  ["person", 0.82],
-                ].map(([label, acc]) => (
-                  <div key={label as string}>
-                    <div className="mb-1 flex justify-between text-sm">
-                      <span className="capitalize text-muted">{label}</span>
-                      <span className="font-medium">
-                        {((acc as number) * 100).toFixed(0)}%
-                      </span>
+              <p className="mb-4 text-sm font-medium">
+                Label distribution
+                {quality && quality.total_shapes > 0 && (
+                  <span className="ml-1.5 font-normal text-faint">
+                    · {formatNumber(quality.total_shapes)} labels so far
+                  </span>
+                )}
+              </p>
+              {quality && quality.per_class.length > 0 ? (
+                <div className="space-y-3">
+                  {quality.per_class.map((c) => (
+                    <div key={c.name}>
+                      <div className="mb-1 flex justify-between text-sm">
+                        <span className="flex items-center gap-1.5 capitalize text-muted">
+                          <span
+                            className="h-2.5 w-2.5 rounded-sm"
+                            style={{ backgroundColor: c.color }}
+                          />
+                          {c.name}
+                        </span>
+                        <span className="font-medium">
+                          {formatNumber(c.count)} ({c.share}%)
+                        </span>
+                      </div>
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-line">
+                        <div
+                          className="h-full rounded-full transition-all duration-500"
+                          style={{
+                            width: `${c.share}%`,
+                            backgroundColor: c.color,
+                          }}
+                        />
+                      </div>
                     </div>
-                    <ProgressBar value={(acc as number) * 100} />
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-faint">
+                  Per-class counts appear here in real time as annotators draw
+                  labels — nothing is estimated.
+                </p>
+              )}
             </Card>
           </div>
         )}
@@ -258,7 +308,12 @@ function IntakeSection({ project }: { project: Project }) {
   const [driveLink, setDriveLink] = useState("");
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Seed the error from a ?dataError= handed over when the wizard's upload
+  // step failed after the project was already created.
+  const [error, setError] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return new URLSearchParams(window.location.search).get("dataError");
+  });
 
   const awaiting = intake?.intake_status === "awaiting_data";
 

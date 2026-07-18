@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/form";
+import { GoogleSignIn, OrDivider } from "@/components/auth/google-signin";
 import { login, HOME_FOR_ROLE } from "@/lib/auth";
 
 export default function LoginPage() {
@@ -37,9 +38,14 @@ export default function LoginPage() {
         Log in to your Annoting workspace.
       </p>
 
-      <form onSubmit={onSubmit} className="mt-7 space-y-4">
+      <div className="mt-7">
+        <GoogleSignIn label="Continue with Google" />
+        <OrDivider />
+      </div>
+
+      <form onSubmit={onSubmit} className="space-y-4">
         <Field label="Email">
-          <Input name="email" type="email" required placeholder="you@company.com" autoFocus />
+          <Input name="email" type="email" required placeholder="you@email.com" autoFocus />
         </Field>
         <Field label="Password">
           <Input name="password" type="password" required placeholder="••••••••" />

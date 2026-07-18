@@ -22,7 +22,7 @@ export default function AuthLayout({
 
       {/* brand side */}
       <div className="relative hidden overflow-hidden bg-ink lg:block">
-        <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-accent/25 blur-3xl" />
+        <div className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-accent opacity-25 blur-3xl" />
         <div className="relative flex h-full flex-col justify-center px-14 text-canvas">
           <p className="text-sm font-medium uppercase tracking-[0.18em] text-canvas/50">
             Annoting platform

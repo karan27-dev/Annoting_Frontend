@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Receipt, Download, Clock } from "lucide-react";
+import { Receipt, FileText, Clock } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/shell";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { LinkButton } from "@/components/ui/button";
 import { DataTable, StatusBadge, EmptyState } from "@/components/dashboard/widgets";
 import { api } from "@/lib/api";
 import { formatINR } from "@/lib/utils";
@@ -63,9 +63,13 @@ export default function BillingPage() {
                 <StatusBadge status={inv.status} />
               </td>
               <td className="px-4 py-3 text-right">
-                <Button variant="ghost" size="sm">
-                  <Download size={15} /> PDF
-                </Button>
+                <LinkButton
+                  href={`/billing/invoices/${inv.id}`}
+                  variant="ghost"
+                  size="sm"
+                >
+                  <FileText size={15} /> View / PDF
+                </LinkButton>
               </td>
             </tr>
           ))}

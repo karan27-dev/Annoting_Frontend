@@ -231,7 +231,7 @@ export default function LandingPage() {
       <section>
         <Container className="py-8">
           <div className="relative overflow-hidden rounded-2xl border border-line bg-ink px-8 py-16 text-center text-canvas sm:px-16">
-            <div className="pointer-events-none absolute -right-20 -top-20 h-72 w-72 rounded-full bg-accent/20 blur-3xl" />
+            <div className="pointer-events-none absolute -right-20 -top-20 h-72 w-72 rounded-full bg-accent opacity-20 blur-3xl" />
             <h2 className="display relative mx-auto max-w-2xl text-4xl font-semibold sm:text-5xl">
               Start your first annotation project today.
             </h2>

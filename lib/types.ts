@@ -54,6 +54,57 @@ export interface Project {
   complexity_tier?: string | null;
   intake_status: IntakeStatus;
   intake_detail?: string | null;
+  mode: ProjectMode;
+}
+
+export type ProjectMode = "managed" | "self_serve";
+
+export interface Box {
+  label: string;
+  x: number; // 0..1 fractions of width/height
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface DatasetImageItem {
+  id: string;
+  filename: string;
+  url: string;
+  width: number;
+  height: number;
+  status: "unlabeled" | "labeled" | "review" | "approved";
+  box_count: number;
+  split: string;
+}
+
+export interface ImageDetail {
+  id: string;
+  filename: string;
+  url: string;
+  width: number;
+  height: number;
+  status: string;
+  split: string;
+  annotations: Box[];
+  labels: { name: string; color: string }[];
+  index: number;
+  total: number;
+  next_id: string | null;
+  prev_id: string | null;
+}
+
+export interface DatasetSummary {
+  project_id: string;
+  name: string;
+  annotation_type: string;
+  mode: ProjectMode;
+  total_images: number;
+  labeled: number;
+  unlabeled: number;
+  total_boxes: number;
+  classes: { name: string; color: string; count: number }[];
+  splits: Record<string, number>;
 }
 
 export interface QuoteSummary {
@@ -96,6 +147,7 @@ export const DELIVERY_FORMATS: {
 export interface Invoice {
   id: string;
   invoice_number: string;
+  project_id: string;
   amount_inr: number;
   gst_amount_inr: number;
   total_inr: number;

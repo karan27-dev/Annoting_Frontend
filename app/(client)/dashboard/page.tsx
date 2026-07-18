@@ -20,7 +20,7 @@ import {
   EmptyState,
 } from "@/components/dashboard/widgets";
 import { api } from "@/lib/api";
-import { formatINR, formatNumber } from "@/lib/utils";
+import { cn, formatINR, formatNumber } from "@/lib/utils";
 import type { Project } from "@/lib/types";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -103,13 +103,14 @@ export default function ClientDashboard() {
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           {projects.map((p) => {
+            const selfServe = p.mode === "self_serve";
             const pct = p.total_images
               ? Math.round((p.images_completed / p.total_images) * 100)
               : 0;
             return (
               <Link
                 key={p.id}
-                href={`/projects/${p.id}`}
+                href={selfServe ? `/datasets/${p.id}` : `/projects/${p.id}`}
                 className="group rounded-lg border border-line bg-surface p-5 transition-all hover:-translate-y-0.5 hover:shadow-soft"
               >
                 <div className="flex items-start justify-between gap-3">
@@ -129,19 +130,32 @@ export default function ClientDashboard() {
                 </div>
 
                 <div className="mt-5 flex items-center gap-2">
-                  <StatusBadge status={p.status} />
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
+                      selfServe
+                        ? "bg-accent-soft text-accent-ink"
+                        : "bg-ink/[0.06] text-muted",
+                    )}
+                  >
+                    {selfServe ? "Self-serve" : "Managed"}
+                  </span>
+                  {!selfServe && <StatusBadge status={p.status} />}
                   {p.quality_score ? <QualityBadge iou={p.quality_score} /> : null}
                 </div>
 
                 <div className="mt-4">
                   <div className="mb-1.5 flex justify-between text-sm">
-                    <span className="text-muted">Progress</span>
+                    <span className="text-muted">
+                      {selfServe ? "Labeled" : "Progress"}
+                    </span>
                     <span className="font-medium">{pct}%</span>
                   </div>
                   <ProgressBar value={pct} />
                   <p className="mt-1.5 text-xs text-faint">
                     {formatNumber(p.images_completed)} /{" "}
-                    {formatNumber(p.total_images)} images labeled
+                    {formatNumber(p.total_images)} images{" "}
+                    {selfServe ? "annotated" : "labeled"}
                   </p>
                 </div>
               </Link>

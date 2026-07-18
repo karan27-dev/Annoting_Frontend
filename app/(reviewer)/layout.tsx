@@ -1,10 +1,11 @@
 "use client";
 
-import { ListChecks, BarChart3 } from "lucide-react";
+import { ListChecks, BarChart3, Wallet } from "lucide-react";
 import { DashboardShell, type NavItem } from "@/components/dashboard/shell";
 import { useAuth } from "@/lib/use-auth";
 
 const nav: NavItem[] = [
+  { href: "/reviewer/quotes", label: "Quotes", icon: Wallet },
   { href: "/reviewer/queue", label: "Review queue", icon: ListChecks },
   { href: "/reviewer/scorecards", label: "Scorecards", icon: BarChart3 },
 ];

@@ -39,7 +39,9 @@ import {
   type DeliveryFormat,
   type LabelClass,
   type MediaType,
+  type ProjectMode,
 } from "@/lib/types";
+import { PenTool, Users } from "lucide-react";
 
 const TYPES: { key: AnnotationType; label: string; icon: typeof Boxes; rate: number; avg: number }[] = [
   { key: "classification", label: "Classification", icon: Tags, rate: 1.5, avg: 1 },
@@ -62,6 +64,7 @@ type SourceTab = "upload" | "gdrive";
 
 export default function NewProjectWizard() {
   const router = useRouter();
+  const [mode, setMode] = useState<ProjectMode | null>(null);
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -113,6 +116,9 @@ export default function NewProjectWizard() {
   async function submit() {
     setSubmitting(true);
     setError(null);
+
+    // Phase 1 — create the project. Only a failure here means "no project".
+    let newId: string;
     try {
       const project = await api<{ id: string }>("/projects", {
         method: "POST",
@@ -128,33 +134,244 @@ export default function NewProjectWizard() {
           delivery_format: format,
         }),
       });
-
-      if (source === "upload" && file) {
-        setUploadPct(0);
-        await uploadDataset(project.id, file, setUploadPct, images);
-        setUploadPct(null);
-      } else if (source === "gdrive" && driveLink.trim()) {
-        await linkGoogleDrive(project.id, driveLink.trim());
-      } else {
-        // No data yet — the project page hosts the upload/Drive actions.
-        router.push(`/projects/${project.id}`);
-        return;
-      }
-
-      // Stay here and show the live intake: counting → quote → accept.
-      setProjectId(project.id);
+      newId = project.id;
     } catch (err) {
       setError(
-        err instanceof ApiError ? err.message : "Could not create project.",
+        err instanceof ApiError
+          ? `Could not create project: ${err.message}`
+          : "Could not create project — is the server reachable?",
       );
+      setSubmitting(false);
+      return;
+    }
+
+    // Phase 2 — attach data. The project already exists, so a failure here
+    // must NOT discard it: send the user to the project page to retry.
+    try {
+      if (source === "upload" && file) {
+        setUploadPct(0);
+        await uploadDataset(newId, file, setUploadPct, images);
+        setUploadPct(null);
+      } else if (source === "gdrive" && driveLink.trim()) {
+        await linkGoogleDrive(newId, driveLink.trim());
+      } else {
+        router.push(`/projects/${newId}`);
+        return;
+      }
+      // Stay here and show the live intake: counting → priced → accept.
+      setProjectId(newId);
+    } catch (err) {
       setUploadPct(null);
+      const msg = err instanceof Error ? err.message : "Upload failed";
+      // Project is saved — continue on its page where data can be re-added.
+      router.push(`/projects/${newId}?dataError=${encodeURIComponent(msg)}`);
     } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // Self-serve: create the dataset project and go straight to the editor.
+  async function submitSelfServe() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const project = await api<{ id: string }>("/projects", {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          annotation_type: type,
+          label_taxonomy: labels.filter((l) => l.name.trim()),
+          description,
+          mode: "self_serve",
+        }),
+      });
+      router.push(`/datasets/${project.id}`);
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? `Could not create dataset: ${err.message}`
+          : "Could not create dataset — is the server reachable?",
+      );
       setSubmitting(false);
     }
   }
 
   const steps = ["Dataset", "Labels", "Delivery", "Data & quote"];
   const hasData = source === "upload" ? Boolean(file) : Boolean(driveLink.trim());
+
+  // ── Mode chooser — the two doors into the platform ──────────────────────────
+  if (mode === null) {
+    return (
+      <div className="mx-auto max-w-3xl">
+        <PageHeader
+          title="Start a project"
+          description="Two ways to get labeled data — pick the one that fits."
+        />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <button
+            onClick={() => setMode("self_serve")}
+            className="group cursor-pointer rounded-2xl border border-line bg-surface p-7 text-left transition-all hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-soft"
+          >
+            <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent-soft text-accent-ink">
+              <PenTool size={22} />
+            </span>
+            <h3 className="mt-4 text-lg font-semibold tracking-tightish">
+              Annotate it yourself
+            </h3>
+            <p className="mt-1.5 text-sm text-muted">
+              Upload images and label them in your browser. Boxes save straight
+              to your dataset — ready to export as COCO or YOLO.
+            </p>
+            <span className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-accent-ink">
+              Build a dataset <ArrowRight size={15} />
+            </span>
+          </button>
+
+          <button
+            onClick={() => setMode("managed")}
+            className="group cursor-pointer rounded-2xl border border-line bg-surface p-7 text-left transition-all hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-soft"
+          >
+            <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-ink text-canvas">
+              <Users size={22} />
+            </span>
+            <h3 className="mt-4 text-lg font-semibold tracking-tightish">
+              Get it annotated for you
+            </h3>
+            <p className="mt-1.5 text-sm text-muted">
+              Send us your images or a Drive link. Our team labels and QA-checks
+              everything, then delivers in your chosen format.
+            </p>
+            <span className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-accent-ink">
+              Get a quote <ArrowRight size={15} />
+            </span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Self-serve: compact create form ─────────────────────────────────────────
+  if (mode === "self_serve") {
+    return (
+      <div className="mx-auto max-w-2xl">
+        <button
+          onClick={() => setMode(null)}
+          className="mb-5 inline-flex cursor-pointer items-center gap-1.5 text-sm text-muted transition-colors hover:text-ink"
+        >
+          <ArrowLeft size={15} /> Back
+        </button>
+        <PageHeader
+          title="New dataset"
+          description="Name it, pick a label type, and define your classes — then start annotating."
+        />
+        <Card className="space-y-6 p-7">
+          <Field label="Dataset name">
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Rooftop solar panels"
+              autoFocus
+            />
+          </Field>
+
+          <div>
+            <p className="mb-2 text-sm font-medium">Label type</p>
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+              {TYPES.filter((t) => t.key === "bbox").map((t) => (
+                <button
+                  key={t.key}
+                  onClick={() => setType(t.key)}
+                  className={cn(
+                    "flex cursor-pointer flex-col items-start gap-2 rounded-xl border p-3.5 text-left transition-colors",
+                    type === t.key
+                      ? "border-accent bg-accent-soft"
+                      : "border-line bg-canvas hover:border-accent/40",
+                  )}
+                >
+                  <t.icon size={20} className="text-accent-ink" />
+                  <span className="text-sm font-medium">{t.label}</span>
+                </button>
+              ))}
+              <div className="flex flex-col items-start gap-2 rounded-xl border border-dashed border-line p-3.5 text-left opacity-60">
+                <Spline size={20} className="text-faint" />
+                <span className="text-sm font-medium text-faint">
+                  Polygon
+                </span>
+                <span className="text-[11px] text-faint">soon</span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-sm font-medium">Classes</p>
+              <Button variant="secondary" size="sm" onClick={addLabel}>
+                <Plus size={14} /> Add
+              </Button>
+            </div>
+            <div className="space-y-2.5">
+              {labels.map((l, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 rounded-xl border border-line bg-canvas p-2.5"
+                >
+                  <div className="flex gap-1">
+                    {SWATCHES.map((c) => (
+                      <button
+                        key={c}
+                        onClick={() => updateLabel(i, { color: c })}
+                        className={cn(
+                          "h-5 w-5 cursor-pointer rounded-full border-2 transition-transform",
+                          l.color === c
+                            ? "scale-110 border-ink"
+                            : "border-transparent",
+                        )}
+                        style={{ backgroundColor: c }}
+                        aria-label={`color ${c}`}
+                      />
+                    ))}
+                  </div>
+                  <Input
+                    value={l.name}
+                    onChange={(e) => updateLabel(i, { name: e.target.value })}
+                    placeholder="class name (e.g. car)"
+                    className="flex-1"
+                  />
+                  <button
+                    onClick={() => removeLabel(i)}
+                    disabled={labels.length === 1}
+                    className="cursor-pointer rounded-lg p-2 text-faint transition-colors hover:bg-ink/5 hover:text-danger disabled:opacity-30"
+                    aria-label="Remove class"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {error && <p className="text-sm text-danger">{error}</p>}
+
+          <div className="flex justify-end">
+            <Button
+              onClick={submitSelfServe}
+              disabled={submitting || !name.trim() || !labels.some((l) => l.name.trim())}
+            >
+              {submitting ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" /> Creating…
+                </>
+              ) : (
+                <>
+                  Create & annotate <ArrowRight size={16} />
+                </>
+              )}
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   // ── Post-submit: live intake panel ─────────────────────────────────────────
   if (projectId) {
