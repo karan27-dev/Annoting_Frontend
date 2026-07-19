@@ -21,6 +21,7 @@ export default function TrainingMonitor() {
   const { id, jobId } = useParams<{ id: string; jobId: string }>();
   const [job, setJob] = useState<TrainingJob | null>(null);
   const [copied, setCopied] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const poll = useCallback(() => {
@@ -41,6 +42,19 @@ export default function TrainingMonitor() {
       timer.current = null;
     }
   }, [job]);
+
+  async function cancelJob() {
+    if (!job || cancelling) return;
+    setCancelling(true);
+    try {
+      await api(`/training/jobs/${jobId}/cancel`, { method: "POST" });
+      poll();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setCancelling(false);
+    }
+  }
 
   if (!job) {
     return (
@@ -69,7 +83,18 @@ export default function TrainingMonitor() {
           </h1>
           <p className="mt-0.5 text-muted">{job.epochs_total} epochs</p>
         </div>
-        <StatusPill status={job.status} epoch={job.current_epoch} total={job.epochs_total} />
+        <div className="flex items-center gap-2">
+          <StatusPill status={job.status} epoch={job.current_epoch} total={job.epochs_total} />
+          {(job.status === "running" || job.status === "awaiting_gpu") && (
+            <button
+              onClick={cancelJob}
+              disabled={cancelling}
+              className="cursor-pointer rounded-full border border-danger/40 px-3 py-1.5 text-sm font-medium text-danger transition-colors hover:bg-danger/10 disabled:opacity-50"
+            >
+              {cancelling ? "Cancelling…" : "Cancel"}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Backend-not-public warning — Colab can't reach localhost */}
