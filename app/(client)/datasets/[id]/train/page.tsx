@@ -33,7 +33,10 @@ const ARCHS: {
     label: "RT-DETR",
     recommended: true,
     blurb: ["Real-time transformer detector", "Strong accuracy, converges early"],
-    sizes: [{ key: "l", label: "Large" }],
+    sizes: [
+      { key: "l", label: "Large" },
+      { key: "x", label: "X Large" },
+    ],
   },
   {
     key: "yolo11",
@@ -43,6 +46,8 @@ const ARCHS: {
       { key: "n", label: "Nano" },
       { key: "s", label: "Small" },
       { key: "m", label: "Medium" },
+      { key: "l", label: "Large" },
+      { key: "x", label: "X Large" },
     ],
   },
   {
@@ -53,6 +58,8 @@ const ARCHS: {
       { key: "n", label: "Nano" },
       { key: "s", label: "Small" },
       { key: "m", label: "Medium" },
+      { key: "l", label: "Large" },
+      { key: "x", label: "X Large" },
     ],
   },
 ];
