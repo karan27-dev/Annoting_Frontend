@@ -1,168 +1,175 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  FolderKanban,
-  Tags,
-  Wallet,
   Plus,
-  ArrowUpRight,
-  Clock,
+  Search,
+  FolderKanban,
+  Boxes,
+  Lock,
+  PenTool,
+  Users,
 } from "lucide-react";
-import { PageHeader } from "@/components/dashboard/shell";
-import { Stat } from "@/components/ui/card";
 import { LinkButton } from "@/components/ui/button";
-import {
-  ProgressBar,
-  QualityBadge,
-  StatusBadge,
-  EmptyState,
-} from "@/components/dashboard/widgets";
 import { api } from "@/lib/api";
-import { cn, formatINR, formatNumber } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 import type { Project } from "@/lib/types";
 
 const TYPE_LABEL: Record<string, string> = {
-  bbox: "Bounding box",
-  polygon: "Polygon",
-  segmentation: "Segmentation",
-  keypoint: "Keypoint",
+  bbox: "Object Detection",
+  polygon: "Instance Segmentation",
+  segmentation: "Semantic Segmentation",
+  keypoint: "Keypoint Detection",
   classification: "Classification",
 };
 
-export default function ClientDashboard() {
+type Sort = "recent" | "name" | "images";
+
+export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[] | null>(null);
+  const [q, setQ] = useState("");
+  const [sort, setSort] = useState<Sort>("recent");
 
   useEffect(() => {
-    api<Project[]>("/projects")
-      .then(setProjects)
-      .catch(() => setProjects([]));
+    api<Project[]>("/projects").then(setProjects).catch(() => setProjects([]));
   }, []);
 
-  const active = projects?.filter((p) => p.status === "active").length ?? 0;
-  const labels =
-    projects?.reduce((s, p) => s + p.images_completed, 0) ?? 0;
+  const shown = useMemo(() => {
+    if (!projects) return [];
+    const filtered = projects.filter((p) =>
+      p.name.toLowerCase().includes(q.trim().toLowerCase()),
+    );
+    return [...filtered].sort((a, b) => {
+      if (sort === "name") return a.name.localeCompare(b.name);
+      if (sort === "images") return b.total_images - a.total_images;
+      return +new Date(b.created_at) - +new Date(a.created_at);
+    });
+  }, [projects, q, sort]);
 
   return (
     <>
-      <PageHeader
-        title="Overview"
-        description="Track your annotation projects, quality and delivery."
-        action={
-          <LinkButton href="/projects/new" size="sm">
-            <Plus size={16} /> New project
-          </LinkButton>
-        }
-      />
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat
-          label="Total projects"
-          value={projects ? projects.length : "—"}
-          icon={<FolderKanban size={18} />}
-        />
-        <Stat label="Active" value={active} icon={<Clock size={18} />} />
-        <Stat
-          label="Labels delivered"
-          value={formatNumber(labels)}
-          icon={<Tags size={18} />}
-        />
-        <Stat
-          label="Lifetime spend"
-          value={formatINR(0)}
-          hint="Payments coming soon"
-          icon={<Wallet size={18} />}
-        />
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold tracking-tighter2">Projects</h1>
+        <LinkButton href="/projects/new" size="sm">
+          <Plus size={16} /> New Project
+        </LinkButton>
       </div>
 
-      <h2 className="mb-4 mt-10 text-lg font-semibold tracking-tightish">
-        Your projects
-      </h2>
+      {/* controls */}
+      <div className="mb-6 flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 sm:max-w-md">
+          <Search
+            size={16}
+            className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-faint"
+          />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search projects"
+            className="h-10 w-full rounded-full border border-line bg-surface pl-10 pr-4 text-sm outline-none transition-colors focus:border-accent/50"
+          />
+        </div>
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value as Sort)}
+          className="h-10 cursor-pointer rounded-full border border-line bg-surface px-4 text-sm outline-none"
+        >
+          <option value="recent">Sort: Newest</option>
+          <option value="name">Sort: Name</option>
+          <option value="images">Sort: Images</option>
+        </select>
+      </div>
 
       {projects === null ? (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {[0, 1].map((i) => (
-            <div key={i} className="h-40 rounded-lg border border-line bg-surface p-5">
-              <div className="skeleton h-5 w-1/3 rounded" />
-              <div className="skeleton mt-4 h-2 w-full rounded" />
-            </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-40 rounded-xl border border-line bg-surface" />
           ))}
         </div>
-      ) : projects.length === 0 ? (
-        <EmptyState
-          icon={<FolderKanban size={28} />}
-          title="No projects yet"
-          description="Create your first annotation project — define your labels, upload a dataset and get an instant quote."
-          action={
-            <LinkButton href="/projects/new" size="sm">
-              <Plus size={16} /> Start a project
-            </LinkButton>
-          }
-        />
+      ) : shown.length === 0 ? (
+        <ProjectsEmpty hasAny={projects.length > 0} query={q} />
       ) : (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {projects.map((p) => {
-            const selfServe = p.mode === "self_serve";
-            const pct = p.total_images
-              ? Math.round((p.images_completed / p.total_images) * 100)
-              : 0;
-            return (
-              <Link
-                key={p.id}
-                href={selfServe ? `/datasets/${p.id}` : `/projects/${p.id}`}
-                className="group rounded-lg border border-line bg-surface p-5 transition-all hover:-translate-y-0.5 hover:shadow-soft"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="font-semibold tracking-tightish group-hover:text-accent-ink">
-                      {p.name}
-                    </h3>
-                    <p className="mt-0.5 text-sm text-muted">
-                      {TYPE_LABEL[p.annotation_type]} ·{" "}
-                      {formatNumber(p.total_images)} images
-                    </p>
-                  </div>
-                  <ArrowUpRight
-                    size={18}
-                    className="text-faint transition-colors group-hover:text-accent"
-                  />
-                </div>
-
-                <div className="mt-5 flex items-center gap-2">
-                  <span
-                    className={cn(
-                      "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
-                      selfServe
-                        ? "bg-accent-soft text-accent-ink"
-                        : "bg-ink/[0.06] text-muted",
-                    )}
-                  >
-                    {selfServe ? "Self-serve" : "Managed"}
-                  </span>
-                  {!selfServe && <StatusBadge status={p.status} />}
-                  {p.quality_score ? <QualityBadge iou={p.quality_score} /> : null}
-                </div>
-
-                <div className="mt-4">
-                  <div className="mb-1.5 flex justify-between text-sm">
-                    <span className="text-muted">
-                      {selfServe ? "Labeled" : "Progress"}
-                    </span>
-                    <span className="font-medium">{pct}%</span>
-                  </div>
-                  <ProgressBar value={pct} />
-                  <p className="mt-1.5 text-xs text-faint">
-                    {formatNumber(p.images_completed)} /{" "}
-                    {formatNumber(p.total_images)} images{" "}
-                    {selfServe ? "annotated" : "labeled"}
-                  </p>
-                </div>
-              </Link>
-            );
-          })}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {shown.map((p) => (
+            <ProjectCard key={p.id} p={p} />
+          ))}
         </div>
       )}
     </>
+  );
+}
+
+function ProjectCard({ p }: { p: Project }) {
+  const selfServe = p.mode === "self_serve";
+  const href = selfServe ? `/datasets/${p.id}` : `/projects/${p.id}`;
+  const edited = new Date(p.created_at).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+  return (
+    <Link
+      href={href}
+      className="group overflow-hidden rounded-xl border border-line bg-surface transition-all hover:-translate-y-0.5 hover:shadow-soft"
+    >
+      {/* thumbnail band */}
+      <div className="relative flex h-28 items-center justify-center bg-ink">
+        <Boxes size={28} className="text-canvas/25" />
+        <span className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-black/40 px-2 py-0.5 text-[10px] font-medium text-white backdrop-blur">
+          <Lock size={9} /> Private
+        </span>
+        <span
+          className={cn(
+            "absolute left-2 top-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+            selfServe ? "bg-accent text-white" : "bg-canvas text-ink",
+          )}
+        >
+          {selfServe ? <PenTool size={9} /> : <Users size={9} />}
+          {selfServe ? "Self-serve" : "Managed"}
+        </span>
+      </div>
+      {/* meta */}
+      <div className="p-4">
+        <span className="inline-flex items-center gap-1 rounded-md bg-ink/[0.05] px-1.5 py-0.5 text-[11px] font-medium text-muted">
+          {TYPE_LABEL[p.annotation_type] ?? p.annotation_type}
+        </span>
+        <h3 className="mt-2 font-semibold tracking-tightish group-hover:text-accent-ink">
+          {p.name}
+        </h3>
+        <p className="mt-0.5 text-xs text-faint">Created {edited}</p>
+        <p className="mt-2 text-sm text-muted">
+          {formatNumber(p.total_images)} image
+          {p.total_images === 1 ? "" : "s"}
+          {selfServe
+            ? ` · ${formatNumber(p.images_completed)} labeled`
+            : ` · ${p.status.replace(/_/g, " ")}`}
+        </p>
+      </div>
+    </Link>
+  );
+}
+
+function ProjectsEmpty({ hasAny, query }: { hasAny: boolean; query: string }) {
+  if (hasAny) {
+    return (
+      <div className="grid-texture flex flex-col items-center justify-center rounded-xl border border-dashed border-line bg-surface px-6 py-16 text-center">
+        <Search size={26} className="text-faint" />
+        <p className="mt-3 font-medium">No projects match “{query}”</p>
+      </div>
+    );
+  }
+  return (
+    <div className="grid-texture flex flex-col items-center justify-center rounded-xl border border-dashed border-line bg-surface px-6 py-20 text-center">
+      <FolderKanban size={28} className="text-faint" />
+      <p className="mt-4 text-lg font-medium">Create your first project</p>
+      <p className="mt-1.5 max-w-sm text-sm text-muted">
+        Annotate your own images into a dataset, or send us your data and we
+        label it for you.
+      </p>
+      <LinkButton href="/projects/new" size="sm" className="mt-5">
+        <Plus size={16} /> New Project
+      </LinkButton>
+    </div>
   );
 }

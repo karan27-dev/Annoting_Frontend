@@ -1,18 +1,23 @@
 "use client";
 
 import {
-  LayoutDashboard,
   FolderKanban,
+  Workflow,
+  Boxes,
+  Rocket,
+  Compass,
   Receipt,
   Settings,
-  Plus,
 } from "lucide-react";
 import { DashboardShell, type NavItem } from "@/components/dashboard/shell";
 import { useAuth } from "@/lib/use-auth";
 
 const nav: NavItem[] = [
-  { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
-  { href: "/projects/new", label: "New project", icon: Plus },
+  { href: "/dashboard", label: "Projects", icon: FolderKanban },
+  { href: "/workflows", label: "Workflows", icon: Workflow },
+  { href: "/models", label: "Models", icon: Boxes },
+  { href: "/deployments", label: "Deployments", icon: Rocket },
+  { href: "/universe", label: "Universe", icon: Compass },
   { href: "/billing", label: "Billing", icon: Receipt },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
