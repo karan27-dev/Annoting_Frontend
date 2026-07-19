@@ -29,10 +29,10 @@ const ARCHS: {
   sizes: { key: string; label: string }[];
 }[] = [
   {
-    key: "rtdetr",
-    label: "RT-DETR",
+    key: "rfdetr",
+    label: "RF-DETR",
     recommended: true,
-    blurb: ["Real-time transformer detector", "Strong accuracy, converges early"],
+    blurb: ["Real-time transformer detector", "Highest accuracy on COCO, converges early"],
     sizes: [
       { key: "l", label: "Large" },
       { key: "x", label: "X Large" },
@@ -64,11 +64,36 @@ const ARCHS: {
   },
 ];
 
+/**
+ * Recommend a model size based on labeled image count and architecture.
+ * RF-DETR only has Large / X Large — so we pick based on dataset richness.
+ * YOLO has the full nano→xlarge spectrum.
+ */
+function getRecommendedSize(imageCount: number, archKey: string): string {
+  if (archKey === "rfdetr") {
+    return imageCount >= 400 ? "x" : "l";
+  }
+  // YOLO11 / YOLOv8
+  if (imageCount < 80)  return "n";
+  if (imageCount < 250) return "s";
+  if (imageCount < 700) return "m";
+  if (imageCount < 2000) return "l";
+  return "x";
+}
+
+const SIZE_REASON: Record<string, string> = {
+  n: "Very small dataset — Nano trains fast and avoids overfitting.",
+  s: "Small dataset — Small gives a good accuracy/speed trade-off.",
+  m: "Medium dataset — Medium balances accuracy and training time.",
+  l: "Large dataset — Large extracts richer features from your data.",
+  x: "Big dataset — X Large squeezes out maximum accuracy.",
+};
+
 export default function TrainWizard() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
 
-  const [arch, setArch] = useState("rtdetr");
+  const [arch, setArch] = useState("rfdetr");
   const [size, setSize] = useState("l");
   const [epochs, setEpochs] = useState(50);
   const [versions, setVersions] = useState<DatasetVersion[] | null>(null);
@@ -76,6 +101,11 @@ export default function TrainWizard() {
   const [creating, setCreating] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Derive the selected version so we can compute recommendations.
+  const selectedVersion = versions?.find((v) => v.id === versionId) ?? null;
+  const imageCount = selectedVersion?.image_count ?? 0;
+  const recommendedSize = getRecommendedSize(imageCount, arch);
 
   const loadVersions = useCallback(() => {
     api<DatasetVersion[]>(`/datasets/${id}/versions`)
@@ -88,6 +118,16 @@ export default function TrainWizard() {
   }, [id]);
 
   useEffect(() => loadVersions(), [loadVersions]);
+
+  // Auto-select the recommended size whenever the version or architecture changes.
+  useEffect(() => {
+    if (!versionId) return;
+    const activeArch = ARCHS.find((a) => a.key === arch)!;
+    const rec = getRecommendedSize(imageCount, arch);
+    // Only auto-select if the rec size exists for this arch.
+    if (activeArch.sizes.some((s) => s.key === rec)) setSize(rec);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [versionId, arch]);
 
   const activeArch = ARCHS.find((a) => a.key === arch)!;
 
@@ -218,22 +258,38 @@ export default function TrainWizard() {
         </div>
         {/* size */}
         <div className="mt-4">
-          <p className="mb-2 text-sm font-medium">Model size</p>
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-sm font-medium">Model size</p>
+            {selectedVersion && (
+              <p className="text-xs text-muted">
+                {imageCount} images in dataset
+              </p>
+            )}
+          </div>
           <div className="flex flex-wrap gap-2">
-            {activeArch.sizes.map((s) => (
-              <button
-                key={s.key}
-                onClick={() => setSize(s.key)}
-                className={cn(
-                  "cursor-pointer rounded-full border px-4 py-1.5 text-sm transition-colors",
-                  size === s.key
-                    ? "border-accent bg-accent-soft text-accent-ink"
-                    : "border-line bg-canvas text-muted hover:border-accent/40",
-                )}
-              >
-                {s.label}
-              </button>
-            ))}
+            {activeArch.sizes.map((s) => {
+              const isRec = s.key === recommendedSize && !!selectedVersion;
+              const isSelected = size === s.key;
+              return (
+                <button
+                  key={s.key}
+                  onClick={() => setSize(s.key)}
+                  className={cn(
+                    "relative cursor-pointer rounded-full border px-4 py-1.5 text-sm transition-colors",
+                    isSelected
+                      ? "border-accent bg-accent-soft text-accent-ink"
+                      : "border-line bg-canvas text-muted hover:border-accent/40",
+                  )}
+                >
+                  {s.label}
+                  {isRec && (
+                    <span className="absolute -top-2 -right-1 rounded-full bg-accent px-1.5 py-px text-[9px] font-semibold text-white leading-tight">
+                      ✓ Best
+                    </span>
+                  )}
+                </button>
+              );
+            })}
             <div className="ml-auto flex items-center gap-2 text-sm">
               <span className="text-muted">Epochs</span>
               <input
@@ -246,6 +302,15 @@ export default function TrainWizard() {
               />
             </div>
           </div>
+          {/* Recommendation tip */}
+          {selectedVersion && (
+            <p className="mt-2 text-xs text-muted">
+              <span className="font-medium text-accent-ink">
+                {activeArch.sizes.find((s) => s.key === recommendedSize)?.label ?? ""} recommended
+              </span>
+              {" — "}{SIZE_REASON[recommendedSize]}
+            </p>
+          )}
         </div>
       </Section>
 
