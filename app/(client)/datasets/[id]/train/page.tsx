@@ -34,6 +34,9 @@ const ARCHS: {
     recommended: true,
     blurb: ["Real-time transformer detector", "Highest accuracy on COCO, converges early"],
     sizes: [
+      { key: "n", label: "Nano" },
+      { key: "s", label: "Small" },
+      { key: "m", label: "Medium" },
       { key: "l", label: "Large" },
       { key: "x", label: "X Large" },
     ],
@@ -66,14 +69,9 @@ const ARCHS: {
 
 /**
  * Recommend a model size based on labeled image count and architecture.
- * RF-DETR only has Large / X Large — so we pick based on dataset richness.
- * YOLO has the full nano→xlarge spectrum.
  */
 function getRecommendedSize(imageCount: number, archKey: string): string {
-  if (archKey === "rfdetr") {
-    return imageCount >= 400 ? "x" : "l";
-  }
-  // YOLO11 / YOLOv8
+  // RF-DETR and YOLO now have the full nano→xlarge spectrum.
   if (imageCount < 80)  return "n";
   if (imageCount < 250) return "s";
   if (imageCount < 700) return "m";
