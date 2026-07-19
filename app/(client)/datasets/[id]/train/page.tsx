@@ -1,0 +1,347 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import {
+  ArrowLeft,
+  SlidersHorizontal,
+  Sparkles,
+  Boxes,
+  Lock,
+  Loader2,
+  Plus,
+  Layers,
+  Check,
+  Zap,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { api, ApiError } from "@/lib/api";
+import { cn, formatNumber } from "@/lib/utils";
+import type { DatasetVersion } from "@/lib/types";
+
+// Architectures offered — image detection models (video comes with tracking later).
+const ARCHS: {
+  key: string;
+  label: string;
+  recommended?: boolean;
+  blurb: string[];
+  sizes: { key: string; label: string }[];
+}[] = [
+  {
+    key: "rtdetr",
+    label: "RT-DETR",
+    recommended: true,
+    blurb: ["Real-time transformer detector", "Strong accuracy, converges early"],
+    sizes: [{ key: "l", label: "Large" }],
+  },
+  {
+    key: "yolo11",
+    label: "YOLO11",
+    blurb: ["Latest Ultralytics YOLO", "Fast CPU + GPU inference"],
+    sizes: [
+      { key: "n", label: "Nano" },
+      { key: "s", label: "Small" },
+      { key: "m", label: "Medium" },
+    ],
+  },
+  {
+    key: "yolov8",
+    label: "YOLOv8",
+    blurb: ["Proven, widely deployed", "Great speed/accuracy balance"],
+    sizes: [
+      { key: "n", label: "Nano" },
+      { key: "s", label: "Small" },
+      { key: "m", label: "Medium" },
+    ],
+  },
+];
+
+export default function TrainWizard() {
+  const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+
+  const [arch, setArch] = useState("rtdetr");
+  const [size, setSize] = useState("l");
+  const [epochs, setEpochs] = useState(50);
+  const [versions, setVersions] = useState<DatasetVersion[] | null>(null);
+  const [versionId, setVersionId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadVersions = useCallback(() => {
+    api<DatasetVersion[]>(`/datasets/${id}/versions`)
+      .then((v) => {
+        setVersions(v);
+        if (v.length && !versionId) setVersionId(v[0].id);
+      })
+      .catch(() => setVersions([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  useEffect(() => loadVersions(), [loadVersions]);
+
+  const activeArch = ARCHS.find((a) => a.key === arch)!;
+
+  async function createVersion() {
+    setCreating(true);
+    setError(null);
+    try {
+      const v = await api<DatasetVersion>(`/datasets/${id}/versions`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      await loadVersions();
+      setVersionId(v.id);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not create version");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function startTraining() {
+    if (!versionId) return;
+    setStarting(true);
+    setError(null);
+    try {
+      const job = await api<{ id: string }>(`/datasets/${id}/train`, {
+        method: "POST",
+        body: JSON.stringify({
+          version_id: versionId,
+          architecture: arch,
+          model_size: size,
+          epochs,
+        }),
+      });
+      router.push(`/datasets/${id}/train/${job.id}`);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Could not start training");
+      setStarting(false);
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-4xl pb-24">
+      <Link
+        href={`/datasets/${id}`}
+        className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted transition-colors hover:text-ink"
+      >
+        <ArrowLeft size={15} /> Back to project
+      </Link>
+
+      <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tighter2">
+        <Zap size={22} /> Train a model
+      </h1>
+      <p className="mt-1 text-muted">
+        Pick an engine and architecture, choose a dataset version, and start
+        training on a free GPU.
+      </p>
+
+      {/* Step 1 — Engine */}
+      <Section n={1} title="Select engine" done>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl border-2 border-accent bg-accent-soft/40 p-5">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-white">
+                <SlidersHorizontal size={18} />
+              </span>
+              <p className="font-semibold tracking-tightish">Custom Training</p>
+            </div>
+            <ul className="mt-3 space-y-1 text-sm text-muted">
+              <li>• Choose the model architecture</li>
+              <li>• Configure model size and epochs</li>
+            </ul>
+          </div>
+          <div className="rounded-2xl border border-line bg-surface p-5 opacity-60">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-ink/[0.06] text-faint">
+                  <Sparkles size={18} />
+                </span>
+                <p className="font-semibold tracking-tightish">Auto (NAS)</p>
+              </div>
+              <span className="inline-flex items-center gap-1 rounded-full bg-ink/[0.06] px-2 py-0.5 text-[11px] text-faint">
+                <Lock size={10} /> Soon
+              </span>
+            </div>
+            <ul className="mt-3 space-y-1 text-sm text-faint">
+              <li>• Automated architecture search</li>
+              <li>• Optimized for your dataset</li>
+            </ul>
+          </div>
+        </div>
+      </Section>
+
+      {/* Step 2 — Architecture */}
+      <Section n={2} title="Select architecture" done>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {ARCHS.map((a) => (
+            <button
+              key={a.key}
+              onClick={() => {
+                setArch(a.key);
+                setSize(a.sizes[0].key);
+              }}
+              className={cn(
+                "rounded-2xl border p-4 text-left transition-colors",
+                arch === a.key
+                  ? "border-accent bg-accent-soft/40"
+                  : "border-line bg-surface hover:border-accent/40",
+              )}
+            >
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-2 font-semibold tracking-tightish">
+                  <Boxes size={17} /> {a.label}
+                </span>
+                {a.recommended && (
+                  <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-medium text-white">
+                    Recommended
+                  </span>
+                )}
+              </div>
+              <ul className="mt-2.5 space-y-1 text-xs text-muted">
+                {a.blurb.map((b) => (
+                  <li key={b}>• {b}</li>
+                ))}
+              </ul>
+            </button>
+          ))}
+        </div>
+        {/* size */}
+        <div className="mt-4">
+          <p className="mb-2 text-sm font-medium">Model size</p>
+          <div className="flex flex-wrap gap-2">
+            {activeArch.sizes.map((s) => (
+              <button
+                key={s.key}
+                onClick={() => setSize(s.key)}
+                className={cn(
+                  "cursor-pointer rounded-full border px-4 py-1.5 text-sm transition-colors",
+                  size === s.key
+                    ? "border-accent bg-accent-soft text-accent-ink"
+                    : "border-line bg-canvas text-muted hover:border-accent/40",
+                )}
+              >
+                {s.label}
+              </button>
+            ))}
+            <div className="ml-auto flex items-center gap-2 text-sm">
+              <span className="text-muted">Epochs</span>
+              <input
+                type="number"
+                min={1}
+                max={300}
+                value={epochs}
+                onChange={(e) => setEpochs(Math.max(1, Math.min(300, +e.target.value)))}
+                className="w-20 rounded-lg border border-line bg-canvas px-3 py-1.5 text-sm outline-none focus:border-accent/50"
+              />
+            </div>
+          </div>
+        </div>
+      </Section>
+
+      {/* Step 3 — Version */}
+      <Section n={3} title="Select dataset version" done={Boolean(versionId)}>
+        <button
+          onClick={createVersion}
+          disabled={creating}
+          className="mb-3 flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-accent/50 py-3 text-sm font-medium text-accent-ink transition-colors hover:bg-accent-soft/40 disabled:opacity-50"
+        >
+          {creating ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
+          Create dataset version
+        </button>
+
+        {versions === null ? (
+          <div className="skeleton h-20 rounded-xl" />
+        ) : versions.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-line py-10 text-center text-sm text-faint">
+            No versions yet. Freeze your labeled images into a version to train on.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {versions.map((v) => (
+              <button
+                key={v.id}
+                onClick={() => setVersionId(v.id)}
+                className={cn(
+                  "flex w-full items-center justify-between rounded-xl border p-4 text-left transition-colors",
+                  versionId === v.id
+                    ? "border-accent bg-accent-soft/40"
+                    : "border-line bg-surface hover:border-accent/40",
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <span
+                    className={cn(
+                      "flex h-8 w-8 items-center justify-center rounded-lg text-xs font-semibold",
+                      versionId === v.id ? "bg-accent text-white" : "bg-ink text-canvas",
+                    )}
+                  >
+                    v{v.number}
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium">{v.name}</p>
+                    <p className="text-xs text-faint">
+                      {v.train_count} train · {v.valid_count} valid · {v.test_count} test
+                    </p>
+                  </div>
+                </div>
+                <span className="flex items-center gap-1.5 text-xs text-muted">
+                  <Layers size={13} /> {formatNumber(v.image_count)} images
+                  {versionId === v.id && <Check size={15} className="text-accent" />}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </Section>
+
+      {error && <p className="mt-4 text-sm text-danger">{error}</p>}
+
+      {/* sticky action */}
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-canvas/90 backdrop-blur lg:left-[260px]">
+        <div className="mx-auto flex max-w-4xl items-center justify-between px-5 py-3">
+          <p className="text-sm text-muted">
+            {activeArch.label} · {activeArch.sizes.find((s) => s.key === size)?.label} ·{" "}
+            {epochs} epochs
+          </p>
+          <Button onClick={startTraining} disabled={!versionId || starting}>
+            {starting ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
+            Start training
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Section({
+  n,
+  title,
+  done,
+  children,
+}: {
+  n: number;
+  title: string;
+  done?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="mt-8">
+      <div className="mb-3 flex items-center gap-2.5">
+        <span
+          className={cn(
+            "flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold",
+            done ? "bg-accent text-white" : "bg-ink/[0.08] text-muted",
+          )}
+        >
+          {done ? <Check size={13} /> : n}
+        </span>
+        <h2 className="font-semibold tracking-tightish">{title}</h2>
+      </div>
+      {children}
+    </div>
+  );
+}

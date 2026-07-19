@@ -107,6 +107,58 @@ export interface DatasetSummary {
   splits: Record<string, number>;
 }
 
+export interface DatasetVersion {
+  id: string;
+  number: number;
+  name: string;
+  image_count: number;
+  train_count: number;
+  valid_count: number;
+  test_count: number;
+  created_at: string;
+}
+
+export interface EpochMetric {
+  epoch: number;
+  train_loss?: number | null;
+  val_loss?: number | null;
+  map50?: number | null;
+  precision?: number | null;
+  recall?: number | null;
+}
+
+export interface TrainingResults {
+  map50: number;
+  map50_95: number;
+  precision: number;
+  recall: number;
+  f1: number;
+  per_class: { name: string; precision: number; recall: number; map50: number }[];
+  confusion_matrix: { labels: string[]; matrix: number[][] };
+  confidence_curve: { confidence: number; f1: number; precision?: number; recall?: number }[];
+  optimal_confidence: number;
+}
+
+export interface TrainingJob {
+  id: string;
+  project_id: string;
+  version_id: string;
+  engine: string;
+  architecture: string;
+  model_size: string;
+  epochs_total: number;
+  status: "awaiting_gpu" | "running" | "completed" | "failed";
+  current_epoch: number;
+  metrics: EpochMetric[];
+  results: TrainingResults | null;
+  error: string | null;
+  created_at: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+  ingest_token?: string;
+  script_url?: string;
+}
+
 export interface QuoteSummary {
   id: string;
   rate_per_label_inr: number;

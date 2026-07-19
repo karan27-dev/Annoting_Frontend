@@ -18,11 +18,16 @@ import {
   Cpu,
   Rocket,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Zap, CircleCheck, CircleAlert } from "lucide-react";
+import { Button, LinkButton } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { uploadDatasetImages } from "@/lib/upload";
 import { cn, formatNumber } from "@/lib/utils";
-import type { DatasetImageItem, DatasetSummary } from "@/lib/types";
+import type {
+  DatasetImageItem,
+  DatasetSummary,
+  TrainingJob,
+} from "@/lib/types";
 
 type Section =
   | "upload"
@@ -223,19 +228,9 @@ export default function ProjectWorkspace() {
         )}
 
         {section === "train" && (
-          <Placeholder
-            icon={<Cpu size={26} />}
-            title="Train a model"
-            body={`Once your dataset has labeled images, you'll be able to train a detection model on it. You have ${formatNumber(labeled.length)} labeled image${labeled.length === 1 ? "" : "s"} so far.`}
-          />
+          <TrainCTA id={id} labeled={labeled.length} />
         )}
-        {section === "models" && (
-          <Placeholder
-            icon={<Rocket size={26} />}
-            title="Models"
-            body="Trained models will appear here with their accuracy metrics. Train your first model from a labeled dataset."
-          />
-        )}
+        {section === "models" && <ModelsPanel id={id} />}
       </div>
     </div>
   );
@@ -516,6 +511,9 @@ function DatasetPanel({
           <Button size="sm" variant="secondary" onClick={() => onExport("yolo")} disabled={(summary?.total_boxes ?? 0) === 0}>
             <Download size={15} /> YOLO
           </Button>
+          <LinkButton href={`/datasets/${id}/train`} size="sm">
+            <Zap size={15} /> Train Model
+          </LinkButton>
         </div>
       </div>
 
@@ -590,6 +588,125 @@ function DatasetPanel({
         </div>
       </div>
     </div>
+  );
+}
+
+function TrainCTA({ id, labeled }: { id: string; labeled: number }) {
+  return (
+    <div className="mx-auto max-w-lg rounded-2xl border border-line bg-surface p-10 text-center">
+      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-accent-soft text-accent-ink">
+        <Cpu size={26} />
+      </div>
+      <p className="mt-4 font-semibold tracking-tightish">Train a model</p>
+      <p className="mx-auto mt-1.5 max-w-md text-sm text-muted">
+        Turn your labeled images into a detection model. Pick an architecture,
+        freeze a dataset version, and train on a free GPU — you have{" "}
+        {formatNumber(labeled)} labeled image{labeled === 1 ? "" : "s"}.
+      </p>
+      <div className="mt-5">
+        <LinkButton href={`/datasets/${id}/train`} size="sm">
+          <Zap size={15} /> Train a model
+        </LinkButton>
+      </div>
+      {labeled < 3 && (
+        <p className="mt-3 text-xs text-faint">
+          Label at least 3 images to create your first dataset version.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ModelsPanel({ id }: { id: string }) {
+  const [jobs, setJobs] = useState<TrainingJob[] | null>(null);
+  useEffect(() => {
+    api<TrainingJob[]>(`/datasets/${id}/models`).then(setJobs).catch(() => setJobs([]));
+  }, [id]);
+
+  return (
+    <div>
+      <div className="mb-5 flex items-center justify-between">
+        <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tighter2">
+          <Rocket size={20} /> Models
+        </h1>
+        <LinkButton href={`/datasets/${id}/train`} size="sm">
+          <Zap size={15} /> Train Model
+        </LinkButton>
+      </div>
+
+      {jobs === null ? (
+        <div className="skeleton h-24 rounded-xl" />
+      ) : jobs.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-line py-16 text-center">
+          <Rocket size={26} className="mx-auto text-faint" />
+          <p className="mt-3 font-medium">No models yet</p>
+          <p className="mt-1 text-sm text-muted">
+            Train your first model to see accuracy metrics here.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {jobs.map((j) => (
+            <Link
+              key={j.id}
+              href={`/datasets/${id}/train/${j.id}`}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface p-4 transition-colors hover:border-accent/40"
+            >
+              <div>
+                <p className="font-medium">
+                  {j.architecture.toUpperCase()} · {j.model_size.toUpperCase()}
+                </p>
+                <p className="text-xs text-faint">
+                  {new Date(j.created_at).toLocaleDateString("en-IN", {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  })}{" "}
+                  · {j.epochs_total} epochs
+                </p>
+              </div>
+              <div className="flex items-center gap-4">
+                {j.status === "completed" && j.results ? (
+                  <span className="text-sm">
+                    <span className="text-faint">mAP@50 </span>
+                    <span className="font-semibold">
+                      {(j.results.map50 * 100).toFixed(1)}%
+                    </span>
+                  </span>
+                ) : null}
+                <ModelStatus status={j.status} epoch={j.current_epoch} total={j.epochs_total} />
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ModelStatus({ status, epoch, total }: { status: string; epoch: number; total: number }) {
+  if (status === "completed")
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2.5 py-1 text-xs font-medium text-success">
+        <CircleCheck size={13} /> Done
+      </span>
+    );
+  if (status === "failed")
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-danger/10 px-2.5 py-1 text-xs font-medium text-danger">
+        <CircleAlert size={13} /> Failed
+      </span>
+    );
+  if (status === "running")
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-accent-soft px-2.5 py-1 text-xs font-medium text-accent-ink">
+        <Loader2 size={12} className="animate-spin" /> {epoch}/{total}
+      </span>
+    );
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-ink/[0.06] px-2.5 py-1 text-xs font-medium text-muted">
+      <Loader2 size={12} className="animate-spin" /> Awaiting GPU
+    </span>
   );
 }
 
