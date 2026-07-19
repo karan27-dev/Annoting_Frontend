@@ -230,67 +230,114 @@ function StatusPill({
 }
 
 function EpochChart({ job }: { job: TrainingJob }) {
-  const W = 640;
-  const H = 200;
-  const pad = 28;
+  const W = 620;
+  const H = 180;
+  const pad = 32;
+
   const xs = job.metrics.map((m) => m.epoch);
   const maxX = Math.max(job.epochs_total, ...xs, 1);
   const px = (e: number) => pad + ((e - 1) / Math.max(1, maxX - 1)) * (W - pad * 2);
 
-  const series: { key: keyof typeof job.metrics[number]; color: string; label: string; max: number }[] = [
-    { key: "map50", color: "#e2553d", label: "mAP@50", max: 1 },
-    { key: "precision", color: "#3b6ea5", label: "Precision", max: 1 },
-    { key: "recall", color: "#2f8f5b", label: "Recall", max: 1 },
+  const accSeries: { key: keyof typeof job.metrics[number]; color: string; label: string }[] = [
+    { key: "map50",     color: "#e2553d", label: "mAP@50"    },
+    { key: "precision", color: "#3b6ea5", label: "Precision"  },
+    { key: "recall",    color: "#2f8f5b", label: "Recall"     },
   ];
 
-  return (
-    <div className="mt-3">
-      <div className="overflow-x-auto">
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[520px]">
-          {[0, 0.25, 0.5, 0.75, 1].map((g) => (
-            <g key={g}>
-              <line
-                x1={pad}
-                x2={W - pad}
-                y1={pad + (1 - g) * (H - pad * 2)}
-                y2={pad + (1 - g) * (H - pad * 2)}
-                stroke="var(--line)"
-                strokeWidth={1}
-              />
-              <text x={4} y={pad + (1 - g) * (H - pad * 2) + 3} fontSize={9} fill="var(--faint)">
-                {g}
-              </text>
-            </g>
-          ))}
-          {series.map((s) => {
-            const pts = job.metrics
-              .filter((m) => m[s.key] != null)
-              .map((m) => {
-                const y = pad + (1 - (m[s.key] as number) / s.max) * (H - pad * 2);
-                return `${px(m.epoch)},${y}`;
-              });
-            if (pts.length === 0) return null;
-            return (
-              <polyline
-                key={s.key}
-                points={pts.join(" ")}
-                fill="none"
-                stroke={s.color}
-                strokeWidth={2}
-                strokeLinejoin="round"
-              />
-            );
-          })}
-        </svg>
-      </div>
-      <div className="mt-2 flex flex-wrap gap-4 text-xs">
-        {series.map((s) => (
-          <span key={s.key} className="flex items-center gap-1.5 text-muted">
-            <span className="h-2 w-4 rounded-full" style={{ backgroundColor: s.color }} />
-            {s.label}
-          </span>
+  // Loss chart — only render if we have non-zero loss data
+  const lossVals = job.metrics.map((m) => (m as Record<string, number>)["train_loss"] ?? 0).filter(Boolean);
+  const maxLoss  = Math.max(...lossVals, 0.001);
+
+  function Axes() {
+    return (
+      <>
+        {[0, 0.25, 0.5, 0.75, 1].map((g) => (
+          <g key={g}>
+            <line x1={pad} x2={W - pad}
+              y1={pad + (1 - g) * (H - pad * 2)}
+              y2={pad + (1 - g) * (H - pad * 2)}
+              stroke="var(--line)" strokeWidth={1} />
+            <text x={4} y={pad + (1 - g) * (H - pad * 2) + 3} fontSize={9} fill="var(--faint)">
+              {g}
+            </text>
+          </g>
         ))}
+      </>
+    );
+  }
+
+  return (
+    <div className="mt-3 space-y-5">
+      {/* Accuracy chart */}
+      <div>
+        <p className="mb-1 text-xs font-medium text-muted">Accuracy</p>
+        <div className="overflow-x-auto">
+          <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[480px]">
+            <Axes />
+            {accSeries.map((s) => {
+              const pts = job.metrics
+                .filter((m) => m[s.key] != null)
+                .map((m) => {
+                  const y = pad + (1 - (m[s.key] as number)) * (H - pad * 2);
+                  return `${px(m.epoch)},${y}`;
+                });
+              return pts.length === 0 ? null : (
+                <polyline key={s.key} points={pts.join(" ")}
+                  fill="none" stroke={s.color} strokeWidth={2} strokeLinejoin="round" />
+              );
+            })}
+          </svg>
+        </div>
+        <div className="mt-1.5 flex flex-wrap gap-4 text-xs">
+          {accSeries.map((s) => (
+            <span key={s.key} className="flex items-center gap-1.5 text-muted">
+              <span className="h-2 w-4 rounded-full" style={{ backgroundColor: s.color }} />
+              {s.label}
+            </span>
+          ))}
+        </div>
       </div>
+
+      {/* Loss chart — only shown when loss data is available */}
+      {lossVals.length > 0 && (
+        <div>
+          <p className="mb-1 text-xs font-medium text-muted">Training Loss</p>
+          <div className="overflow-x-auto">
+            <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[480px]">
+              {[0, 0.25, 0.5, 0.75, 1].map((g) => {
+                const label = (maxLoss * (1 - g)).toFixed(2);
+                return (
+                  <g key={g}>
+                    <line x1={pad} x2={W - pad}
+                      y1={pad + g * (H - pad * 2)}
+                      y2={pad + g * (H - pad * 2)}
+                      stroke="var(--line)" strokeWidth={1} />
+                    <text x={4} y={pad + g * (H - pad * 2) + 3} fontSize={9} fill="var(--faint)">
+                      {label}
+                    </text>
+                  </g>
+                );
+              })}
+              <polyline
+                points={job.metrics
+                  .map((m) => {
+                    const loss = (m as Record<string, number>)["train_loss"] ?? 0;
+                    const y = pad + (1 - loss / maxLoss) * (H - pad * 2);
+                    return `${px(m.epoch)},${y}`;
+                  })
+                  .join(" ")}
+                fill="none" stroke="#f59e0b" strokeWidth={2} strokeLinejoin="round"
+              />
+            </svg>
+          </div>
+          <div className="mt-1.5 flex gap-4 text-xs">
+            <span className="flex items-center gap-1.5 text-muted">
+              <span className="h-2 w-4 rounded-full bg-amber-400" />
+              Train Loss
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
