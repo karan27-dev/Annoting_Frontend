@@ -22,6 +22,7 @@ import { Zap, CircleCheck, CircleAlert } from "lucide-react";
 import { Button, LinkButton } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { uploadDatasetImages } from "@/lib/upload";
+import { extractVideoFrames, isVideoFile } from "@/lib/video";
 import { cn, formatNumber } from "@/lib/utils";
 import type {
   DatasetImageItem,
@@ -42,7 +43,8 @@ export default function ProjectWorkspace() {
   const [summary, setSummary] = useState<DatasetSummary | null>(null);
   const [images, setImages] = useState<DatasetImageItem[] | null>(null);
   const [section, setSection] = useState<Section>("annotate");
-  const [uploading, setUploading] = useState<number | null>(null);
+  const [busy, setBusy] = useState<{ msg: string; pct: number } | null>(null);
+  const [fps, setFps] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -58,15 +60,48 @@ export default function ProjectWorkspace() {
   async function onFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
     setError(null);
-    setUploading(0);
+    const list = Array.from(files);
+    const videos = list.filter(isVideoFile);
+    const stills = list.filter((f) => !isVideoFile(f));
     try {
-      await uploadDatasetImages(id, Array.from(files), setUploading);
+      // Videos never reach the server — they're sampled into JPEG frames
+      // right here in the browser, and the frames upload as ordinary images.
+      const toUpload = [...stills];
+      for (const v of videos) {
+        setBusy({ msg: `Sampling ${v.name} at ${fps} fps…`, pct: 0 });
+        const frames = await extractVideoFrames(v, fps, (done, total) =>
+          setBusy({
+            msg: `Sampling ${v.name} — frame ${done} of ${total}`,
+            pct: Math.round((done / total) * 100),
+          }),
+        );
+        toUpload.push(...frames);
+      }
+      if (toUpload.length === 0) {
+        setError("No images or supported videos in that selection.");
+        return;
+      }
+
+      // Upload in chunks so hundreds of frames don't become one giant request.
+      const CHUNK = 24;
+      let done = 0;
+      for (let i = 0; i < toUpload.length; i += CHUNK) {
+        const part = toUpload.slice(i, i + CHUNK);
+        await uploadDatasetImages(id, part, (pct) =>
+          setBusy({
+            msg: `Uploading ${toUpload.length} image${toUpload.length === 1 ? "" : "s"}…`,
+            pct: Math.round(((done + (part.length * pct) / 100) / toUpload.length) * 100),
+          }),
+        );
+        done += part.length;
+      }
       refresh();
       setSection("annotate");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
     } finally {
-      setUploading(null);
+      setBusy(null);
+      if (fileRef.current) fileRef.current.value = "";
     }
   }
 
@@ -193,10 +228,12 @@ export default function ProjectWorkspace() {
 
         {section === "upload" && (
           <UploadPanel
-            uploading={uploading}
+            busy={busy}
             error={error}
             fileRef={fileRef}
             onFiles={onFiles}
+            fps={fps}
+            setFps={setFps}
           />
         )}
 
@@ -432,16 +469,26 @@ function ColumnEmpty({ label }: { label: string }) {
 }
 
 /* ── Upload panel ──────────────────────────────────────────────────────────── */
+const FPS_CHOICES = [
+  { fps: 1, label: "1 fps", hint: "1 frame / second" },
+  { fps: 2, label: "2 fps", hint: "2 frames / second" },
+  { fps: 5, label: "5 fps", hint: "dense sampling" },
+];
+
 function UploadPanel({
-  uploading,
+  busy,
   error,
   fileRef,
   onFiles,
+  fps,
+  setFps,
 }: {
-  uploading: number | null;
+  busy: { msg: string; pct: number } | null;
   error: string | null;
   fileRef: React.RefObject<HTMLInputElement>;
   onFiles: (f: FileList | null) => void;
+  fps: number;
+  setFps: (n: number) => void;
 }) {
   return (
     <div className="mx-auto max-w-2xl">
@@ -452,35 +499,75 @@ function UploadPanel({
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
-          onFiles(e.dataTransfer.files);
+          if (!busy) onFiles(e.dataTransfer.files);
         }}
-        onClick={() => fileRef.current?.click()}
+        onClick={() => {
+          if (!busy) fileRef.current?.click();
+        }}
         className={cn(
           "flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-16 text-center transition-colors",
-          uploading !== null ? "border-accent/60 bg-accent-soft/40" : "border-line bg-surface hover:border-accent/50",
+          busy ? "border-accent/60 bg-accent-soft/40" : "border-line bg-surface hover:border-accent/50",
         )}
       >
-        {uploading !== null ? (
+        {busy ? (
           <>
             <Loader2 size={30} className="animate-spin text-accent" />
-            <p className="mt-3 text-sm text-muted">Uploading… {uploading}%</p>
+            <p className="mt-3 text-sm font-medium">{busy.msg}</p>
+            <div className="mt-3 h-2 w-56 overflow-hidden rounded-full bg-line">
+              <div
+                className="h-full rounded-full bg-accent transition-all"
+                style={{ width: `${busy.pct}%` }}
+              />
+            </div>
           </>
         ) : (
           <>
             <UploadCloud size={30} className="text-faint" />
-            <p className="mt-3 font-medium">Drop images here, or click to browse</p>
-            <p className="mt-1 text-xs text-faint">JPG, PNG, WEBP · as many as you like</p>
+            <p className="mt-3 font-medium">
+              Drop images or video here, or click to browse
+            </p>
+            <p className="mt-1 text-xs text-faint">
+              JPG, PNG, WEBP · MP4, MOV, WEBM — videos are sampled into frames
+            </p>
           </>
         )}
         <input
           ref={fileRef}
           type="file"
           multiple
-          accept="image/*"
+          accept="image/*,video/*"
           className="sr-only"
           onChange={(e) => onFiles(e.target.files)}
         />
       </div>
+
+      <div className="mt-4 rounded-xl border border-line bg-surface p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium">Video frame rate</p>
+            <p className="mt-0.5 text-xs text-muted">
+              Videos become frames at this rate — each frame is annotated like
+              an image. Sampling happens in your browser.
+            </p>
+          </div>
+          <div className="inline-flex rounded-full border border-line bg-canvas p-1">
+            {FPS_CHOICES.map((c) => (
+              <button
+                key={c.fps}
+                onClick={() => setFps(c.fps)}
+                title={c.hint}
+                className={cn(
+                  "cursor-pointer rounded-full px-3.5 py-1.5 text-sm transition-colors",
+                  fps === c.fps ? "bg-ink text-canvas" : "text-muted hover:text-ink",
+                )}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {error && <p className="mt-3 text-sm text-danger">{error}</p>}
     </div>
   );
@@ -583,7 +670,7 @@ function DatasetPanel({
               })}
             </div>
           ) : (
-            <p className="mt-3 text-sm text-faint">Draw boxes to see class counts.</p>
+            <p className="mt-3 text-sm text-faint">Annotate images to see class counts.</p>
           )}
         </div>
       </div>

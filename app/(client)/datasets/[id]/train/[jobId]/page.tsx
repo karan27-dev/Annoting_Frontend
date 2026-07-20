@@ -245,7 +245,7 @@ function EpochChart({ job }: { job: TrainingJob }) {
   ];
 
   // Loss chart — only render if we have non-zero loss data
-  const lossVals = job.metrics.map((m) => (m as Record<string, number>)["train_loss"] ?? 0).filter(Boolean);
+  const lossVals = job.metrics.map((m) => m.train_loss ?? 0).filter(Boolean);
   const maxLoss  = Math.max(...lossVals, 0.001);
 
   function Axes() {
@@ -321,7 +321,7 @@ function EpochChart({ job }: { job: TrainingJob }) {
               <polyline
                 points={job.metrics
                   .map((m) => {
-                    const loss = (m as Record<string, number>)["train_loss"] ?? 0;
+                    const loss = m.train_loss ?? 0;
                     const y = pad + (1 - loss / maxLoss) * (H - pad * 2);
                     return `${px(m.epoch)},${y}`;
                   })

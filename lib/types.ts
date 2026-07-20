@@ -65,6 +65,10 @@ export interface Box {
   y: number;
   w: number;
   h: number;
+  // "bbox" (default) | "polygon" | "classification". Polygons carry their
+  // vertex list AND the enclosing box in x/y/w/h; classification is 0,0,1,1.
+  type?: "bbox" | "polygon" | "classification";
+  points?: [number, number][];
 }
 
 export interface DatasetImageItem {
@@ -86,6 +90,7 @@ export interface ImageDetail {
   height: number;
   status: string;
   split: string;
+  annotation_type: AnnotationType;
   annotations: Box[];
   labels: { name: string; color: string }[];
   index: number;
@@ -147,6 +152,7 @@ export interface TrainingJob {
   architecture: string;
   model_size: string;
   epochs_total: number;
+  tracker?: string;
   status: "awaiting_gpu" | "running" | "completed" | "failed";
   current_epoch: number;
   metrics: EpochMetric[];

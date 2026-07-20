@@ -14,13 +14,17 @@ import {
   Layers,
   Check,
   Zap,
+  Film,
+  Gauge,
+  Radar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api, ApiError } from "@/lib/api";
 import { cn, formatNumber } from "@/lib/utils";
 import type { DatasetVersion } from "@/lib/types";
 
-// Architectures offered — image detection models (video comes with tracking later).
+// Detector architectures. For video, any YOLO detector below can be paired
+// with a tracker (Step 3) so it runs on video with persistent object IDs.
 const ARCHS: {
   key: string;
   label: string;
@@ -79,6 +83,20 @@ function getRecommendedSize(imageCount: number, archKey: string): string {
   return "x";
 }
 
+// Multi-object trackers paired with the detector for video deployment. The
+// detector runs per-frame; the tracker keeps a persistent ID on each object
+// (Ultralytics model.track). "none" = image-only model.
+const TRACKERS: {
+  key: string;
+  label: string;
+  icon: typeof Radar;
+  blurb: string;
+}[] = [
+  { key: "none", label: "Images only", icon: Boxes, blurb: "Per-frame detection, no object IDs" },
+  { key: "bytetrack", label: "ByteTrack", icon: Gauge, blurb: "Fast, low overhead — great default" },
+  { key: "botsort", label: "BoT-SORT", icon: Radar, blurb: "Re-ID + motion, robust to occlusion" },
+];
+
 const SIZE_REASON: Record<string, string> = {
   n: "Very small dataset — Nano trains fast and avoids overfitting.",
   s: "Small dataset — Small gives a good accuracy/speed trade-off.",
@@ -94,6 +112,8 @@ export default function TrainWizard() {
   const [arch, setArch] = useState("rfdetr");
   const [size, setSize] = useState("l");
   const [epochs, setEpochs] = useState(50);
+  const [tracker, setTracker] = useState("none");
+  const [isVideo, setIsVideo] = useState(false);
   const [versions, setVersions] = useState<DatasetVersion[] | null>(null);
   const [versionId, setVersionId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -116,6 +136,18 @@ export default function TrainWizard() {
   }, [id]);
 
   useEffect(() => loadVersions(), [loadVersions]);
+
+  // Detect a video-derived dataset (frames named "<video>_frame_NNNN") so we
+  // can recommend a tracker for deployment.
+  useEffect(() => {
+    api<{ filename: string }[]>(`/datasets/${id}/images`)
+      .then((imgs) => {
+        const video = imgs.some((im) => /_frame_\d+\.\w+$/i.test(im.filename));
+        setIsVideo(video);
+        if (video) setTracker((t) => (t === "none" ? "bytetrack" : t));
+      })
+      .catch(() => {});
+  }, [id]);
 
   // Auto-select the recommended size whenever the version or architecture changes.
   useEffect(() => {
@@ -158,6 +190,7 @@ export default function TrainWizard() {
           architecture: arch,
           model_size: size,
           epochs,
+          tracker: arch === "rfdetr" ? "none" : tracker,
         }),
       });
       router.push(`/datasets/${id}/train/${job.id}`);
@@ -312,8 +345,65 @@ export default function TrainWizard() {
         </div>
       </Section>
 
-      {/* Step 3 — Version */}
-      <Section n={3} title="Select dataset version" done={Boolean(versionId)}>
+      {/* Step 3 — Video deployment (tracker) */}
+      <Section n={3} title="Deploy to video" done>
+        <p className="mb-3 text-sm text-muted">
+          {isVideo ? (
+            <>
+              This dataset was sampled from video. Pair your detector with a
+              tracker so it keeps a stable ID on each object across frames —
+              the model runs on video via{" "}
+              <code className="rounded bg-ink/[0.06] px-1 py-0.5 text-[12px]">
+                model.track()
+              </code>
+              .
+            </>
+          ) : (
+            <>
+              Optional. Add a multi-object tracker so your model can run on
+              video with persistent per-object IDs, not just single frames.
+            </>
+          )}
+        </p>
+        {arch === "rfdetr" ? (
+          <div className="flex items-center gap-2 rounded-xl border border-line bg-surface p-4 text-sm text-muted">
+            <Film size={16} className="text-faint" />
+            Video tracking runs with YOLO detectors — pick YOLO11 or YOLOv8
+            above to enable ByteTrack / BoT-SORT.
+          </div>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-3">
+            {TRACKERS.map((tk) => {
+              const rec = isVideo && tk.key === "bytetrack";
+              return (
+                <button
+                  key={tk.key}
+                  onClick={() => setTracker(tk.key)}
+                  className={cn(
+                    "relative rounded-2xl border p-4 text-left transition-colors",
+                    tracker === tk.key
+                      ? "border-accent bg-accent-soft/40"
+                      : "border-line bg-surface hover:border-accent/40",
+                  )}
+                >
+                  <span className="flex items-center gap-2 font-semibold tracking-tightish">
+                    <tk.icon size={17} /> {tk.label}
+                  </span>
+                  <p className="mt-2 text-xs text-muted">{tk.blurb}</p>
+                  {rec && (
+                    <span className="absolute -top-2 right-3 rounded-full bg-accent px-2 py-0.5 text-[10px] font-medium text-white">
+                      Recommended
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </Section>
+
+      {/* Step 4 — Version */}
+      <Section n={4} title="Select dataset version" done={Boolean(versionId)}>
         <button
           onClick={createVersion}
           disabled={creating}
@@ -376,6 +466,14 @@ export default function TrainWizard() {
           <p className="text-sm text-muted">
             {activeArch.label} · {activeArch.sizes.find((s) => s.key === size)?.label} ·{" "}
             {epochs} epochs
+            {arch !== "rfdetr" && tracker !== "none" && (
+              <>
+                {" · "}
+                <span className="text-accent-ink">
+                  {TRACKERS.find((t) => t.key === tracker)?.label} tracking
+                </span>
+              </>
+            )}
           </p>
           <Button onClick={startTraining} disabled={!versionId || starting}>
             {starting ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}

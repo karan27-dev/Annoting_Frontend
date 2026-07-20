@@ -62,6 +62,41 @@ const TURNAROUNDS = [
 
 type SourceTab = "upload" | "gdrive";
 
+// Self-serve project types — what the in-app editor actually supports.
+const SS_TYPES: {
+  key: AnnotationType;
+  label: string;
+  desc: string;
+  icon: typeof Boxes;
+  soon?: boolean;
+}[] = [
+  {
+    key: "bbox",
+    label: "Object Detection",
+    desc: "Draw boxes around objects and their positions",
+    icon: Boxes,
+  },
+  {
+    key: "classification",
+    label: "Classification",
+    desc: "Assign one label to the whole image",
+    icon: Tags,
+  },
+  {
+    key: "polygon",
+    label: "Instance Segmentation",
+    desc: "Trace exact object outlines with polygons",
+    icon: Spline,
+  },
+  {
+    key: "keypoint",
+    label: "Keypoint Detection",
+    desc: "Mark skeletons and landmark points",
+    icon: Locate,
+    soon: true,
+  },
+];
+
 export default function NewProjectWizard() {
   const router = useRouter();
   const [mode, setMode] = useState<ProjectMode | null>(null);
@@ -182,6 +217,7 @@ export default function NewProjectWizard() {
           annotation_type: type,
           label_taxonomy: labels.filter((l) => l.name.trim()),
           description,
+          media_type: mediaType,
           mode: "self_serve",
         }),
       });
@@ -219,8 +255,8 @@ export default function NewProjectWizard() {
               Annotate it yourself
             </h3>
             <p className="mt-1.5 text-sm text-muted">
-              Upload images and label them in your browser. Boxes save straight
-              to your dataset — ready to export as COCO or YOLO.
+              Upload images or video and label them in your browser — boxes,
+              polygons, or whole-image classes. Export as COCO or YOLO.
             </p>
             <span className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-accent-ink">
               Build a dataset <ArrowRight size={15} />
@@ -275,30 +311,88 @@ export default function NewProjectWizard() {
           </Field>
 
           <div>
-            <p className="mb-2 text-sm font-medium">Label type</p>
-            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-              {TYPES.filter((t) => t.key === "bbox").map((t) => (
+            <p className="mb-2 text-sm font-medium">What are we labeling?</p>
+            <div className="grid grid-cols-2 gap-2.5">
+              {(
+                [
+                  { key: "images", label: "Images", icon: ImageIcon, hint: "JPG, PNG, WEBP…" },
+                  { key: "videos", label: "Video", icon: FileVideo, hint: "Sampled into frames" },
+                ] as const
+              ).map((m) => (
                 <button
-                  key={t.key}
-                  onClick={() => setType(t.key)}
+                  key={m.key}
+                  onClick={() => setMediaType(m.key)}
                   className={cn(
-                    "flex cursor-pointer flex-col items-start gap-2 rounded-xl border p-3.5 text-left transition-colors",
-                    type === t.key
+                    "flex cursor-pointer items-center gap-3 rounded-xl border p-3.5 text-left transition-colors",
+                    mediaType === m.key
                       ? "border-accent bg-accent-soft"
                       : "border-line bg-canvas hover:border-accent/40",
                   )}
                 >
-                  <t.icon size={20} className="text-accent-ink" />
-                  <span className="text-sm font-medium">{t.label}</span>
+                  <m.icon
+                    size={20}
+                    className={mediaType === m.key ? "text-accent-ink" : "text-muted"}
+                  />
+                  <span>
+                    <span className="block text-sm font-medium">{m.label}</span>
+                    <span className="block text-xs text-faint">{m.hint}</span>
+                  </span>
                 </button>
               ))}
-              <div className="flex flex-col items-start gap-2 rounded-xl border border-dashed border-line p-3.5 text-left opacity-60">
-                <Spline size={20} className="text-faint" />
-                <span className="text-sm font-medium text-faint">
-                  Polygon
-                </span>
-                <span className="text-[11px] text-faint">soon</span>
-              </div>
+            </div>
+            {mediaType === "videos" && (
+              <p className="mt-2 text-xs text-muted">
+                Videos are sampled into frames at a rate you pick on upload —
+                each frame is annotated like an image, right in your browser.
+              </p>
+            )}
+          </div>
+
+          <div>
+            <p className="mb-2 text-sm font-medium">Project type</p>
+            <div className="grid gap-2.5 sm:grid-cols-2">
+              {SS_TYPES.map((t) =>
+                t.soon ? (
+                  <div
+                    key={t.key}
+                    className="flex items-start gap-3 rounded-xl border border-dashed border-line p-3.5 opacity-60"
+                  >
+                    <t.icon size={20} className="mt-0.5 shrink-0 text-faint" />
+                    <span>
+                      <span className="block text-sm font-medium text-faint">
+                        {t.label}
+                        <span className="ml-2 rounded-full bg-ink/[0.06] px-1.5 py-0.5 text-[10px] uppercase tracking-wide">
+                          soon
+                        </span>
+                      </span>
+                      <span className="mt-0.5 block text-xs text-faint">{t.desc}</span>
+                    </span>
+                  </div>
+                ) : (
+                  <button
+                    key={t.key}
+                    onClick={() => setType(t.key)}
+                    className={cn(
+                      "flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 text-left transition-colors",
+                      type === t.key
+                        ? "border-accent bg-accent-soft"
+                        : "border-line bg-canvas hover:border-accent/40",
+                    )}
+                  >
+                    <t.icon
+                      size={20}
+                      className={cn(
+                        "mt-0.5 shrink-0",
+                        type === t.key ? "text-accent-ink" : "text-muted",
+                      )}
+                    />
+                    <span>
+                      <span className="block text-sm font-medium">{t.label}</span>
+                      <span className="mt-0.5 block text-xs text-faint">{t.desc}</span>
+                    </span>
+                  </button>
+                ),
+              )}
             </div>
           </div>
 
